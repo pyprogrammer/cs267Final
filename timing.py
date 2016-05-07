@@ -9,11 +9,10 @@ from snowflake.stencil_compiler import CCompiler
 import time
 import numpy as np
 
-SIZE = 160
+SIZE = 258
 NDIM = 4
 DECOMP = 2
 ITER = 100
-ROUNDS = 10
 
 def create_component(ndim, dim):
     # each component is one dimension -> A[i] = B[i](A[i] - A[i-1]) + B[i+1](A[i+1] - A[i])
@@ -52,18 +51,26 @@ test_opt_out = np.zeros_like(test_in)
 
 naive_args = [test_in] + [test_in]*NDIM + [test_out]
 naive_kernel(*naive_args)
-opt_args = [test_in] + [test_in]*NDIM + [test_opt_out]
-optimized_kernel(*opt_args)
 
+t = -time.time()
+naive_kernel(*naive_args)
+t += time.time()
+print("NAIVE:", t/ITER)
 
-t_naive = -time.time()
-for i in range(ROUNDS):
-    naive_kernel(*naive_args)
-t_naive += time.time()
-t_opt = -time.time()
-for i in range(ROUNDS):
-    optimized_kernel(*opt_args)
-t_opt += time.time()
+def test(tile_size, n):
+    opt_args = [test_in] + [test_in]*NDIM + [test_opt_out]
+    compiler = CCompiler()
+    compiler.tile_size = tile_size
+    optimized = analyzer.repackage(sten, NDIM, n)
+    kern = compiler.compile(optimized)
+    kern(*opt_args)
+    t = -time.time()
+    kern(*opt_args)
+    t += time.time()
+    print(tile_size, n, t/ITER)
 
-print("NAIVE:", t_naive / (ITER * ROUNDS))
-print("OPT:", t_opt / (ITER * ROUNDS))
+for i in range(1, NDIM+1):
+    tile_size = 16
+    while tile_size < SIZE:
+        test((tile_size,)*2, i)
+        tile_size *= 2
